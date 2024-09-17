@@ -23,116 +23,93 @@
 #
 ################################################################################
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 __repo__ = "https://github.com/buildwithpiper/circuitpython_motor_module_library.git"
 
 
 # ----------- Constants and Registers -----------
 # Device i2c address
-PCA9635_ADDR = 0x0F
+DEVICE_ADDR = 0x0F
 
 # Register addresses and masks
-MASK_MODE = 0xFF
 REG_MODE1 = 0x00
 REG_MODE2 = 0x01
 
-MASK_PWM = 0xFF
-REG_PWM0 = 0x02
-REG_PWM1 = 0x03
-REG_PWM2 = 0x04
-REG_PWM3 = 0x05
+REG_PWM = [0x02, 0x03, 0x04, 0x05]
 REG_OUTS = 0x14
 
-OUTPUT0_ON   = 0b00000001
-OUTPUT0_OFF  = 0b00000000
-OUTPUT0_PWM  = 0b00000010
-OUTPUT0_MASK = 0b00000011
+OUTPUT_OFF  = 0b00000000
+OUTPUT_ON   = [0b00000001, 0b00000100, 0b00010000, 0b01000000]
+OUTPUT_PWM  = [0b00000010, 0b00001000, 0b00100000, 0b10000000]
+OUTPUT_MASK = [0b00000011, 0b00001100, 0b00110000, 0b11000000]
 
-OUTPUT1_ON   = 0b00000100
-OUTPUT1_OFF  = 0b00000000
-OUTPUT1_PWM  = 0b00001000
-OUTPUT1_MASK = 0b00001100
-
-OUTPUT2_ON   = 0b00010000
-OUTPUT2_OFF  = 0b00000000
-OUTPUT2_PWM  = 0b00100000
-OUTPUT2_MASK = 0b00110000
-
-OUTPUT3_ON   = 0b01000000
-OUTPUT3_OFF  = 0b00000000
-OUTPUT3_PWM  = 0b10000000
-OUTPUT3_MASK = 0b11000000
-
+SERVO_ATTACHED = [0x1C, 0x1D]
+SERVO_ANGLE = [0x1E, 0x1F]
 
 
 # ----------- Methods -----------
 class piper_motor_module:
   # Initialize the sensor
-  def __init__(self, i2c, address=PCA9635_ADDR):
+  def __init__(self, i2c, address=DEVICE_ADDR):
 
     self.i2c = i2c
     self.address = address
 
-    self.i2c.try_lock()
-
+    while not self.i2c.try_lock():
+      pass
     # Enable the internal oscillator
-    self.register_set(REG_MODE1, MASK_MODE, 0b00000001) # Disable response to all call address
-    self.register_set(REG_MODE2, MASK_MODE, 0b00000101) # Outputs are push-pull and high-z when disabled via /OE pin
-
+    self.register_set(REG_MODE1, 0b00000001) # Disable response to all call address
+    self.register_set(REG_MODE2, 0b00000101) # Outputs are push-pull and high-z when disabled via /OE pin
     self.i2c.unlock()
 
-
-  # Invert the bits in a 8-bit (or otherwise specified) number
-  def bit_not(self, n, numbits=8):
-    return (1 << numbits) - 1 - n
-
-  # Get the value of a specific register by it's name and mask
-  def register_get(self, addr, mask):
-    _csr = bytearray(1)
-    self.i2c.writeto_then_readfrom(self.address, bytes([addr]), _csr)
-    _value = int.from_bytes(_csr, "big") & mask
-    return _value
-
   # Set the value of a specific register by it's name and mask
-  def register_set(self, addr, mask, value):
+  def register_set(self, addr, value, mask=0xFF):
     if (mask != 0xFF):
-      _csr = self.register_get(addr, 0xFF)
-      _csr = _csr & self.bit_not(mask)
-      value = _csr | value
-    _csr = ((addr << 8) | value).to_bytes(2, 'big')
-    self.i2c.writeto(self.address, _csr)
+      _csr = bytearray(1)
+      self.i2c.writeto_then_readfrom(self.address, bytes([addr]), _csr)
+      value = (int.from_bytes(_csr, "big") & (0xFF - mask)) | value
+    self.i2c.writeto(self.address, bytes([addr, value]))
 
   # set the specificed motor to coast
   def coast(self, motor=0):
+    if (motor != 0):
+      motor = 2
+
     while not self.i2c.try_lock():
       pass
-
-    if (motor == 0):
-      self.register_set(REG_OUTS, OUTPUT0_MASK, OUTPUT0_OFF) # Turn output 0 off
-      self.register_set(REG_OUTS, OUTPUT1_MASK, OUTPUT1_OFF) # Turn output 1 off
-    else:
-      self.register_set(REG_OUTS, OUTPUT2_MASK, OUTPUT2_OFF) # Turn output 2 off
-      self.register_set(REG_OUTS, OUTPUT3_MASK, OUTPUT3_OFF) # Turn output 3 off
-
+    self.register_set(REG_OUTS, OUTPUT_OFF, OUTPUT_MASK[motor]) # Turn output off
+    self.register_set(REG_OUTS, OUTPUT_OFF, OUTPUT_MASK[motor + 1]) # Turn output off
     self.i2c.unlock()
 
   # set the specificed motor to brake
   def brake(self, motor=0):
+    if (motor != 0):
+      motor = 2
+
     while not self.i2c.try_lock():
       pass
-
-    if (motor == 0):
-      self.register_set(REG_OUTS, OUTPUT0_MASK, OUTPUT0_ON) # Turn output 0 off
-      self.register_set(REG_OUTS, OUTPUT1_MASK, OUTPUT1_ON) # Turn output 1 off
-    else:
-      self.register_set(REG_OUTS, OUTPUT2_MASK, OUTPUT2_ON) # Turn output 2 off
-      self.register_set(REG_OUTS, OUTPUT3_MASK, OUTPUT3_ON) # Turn output 3 off
-
+    self.register_set(REG_OUTS, OUTPUT_ON[motor], OUTPUT_MASK[motor]) # Turn output on
+    self.register_set(REG_OUTS, OUTPUT_ON[motor + 1], OUTPUT_MASK[motor + 1]) # Turn output on
     self.i2c.unlock()
 
-  # stop the motors (coast)
-  def stop(self):
-    self.register_set(REG_OUTS, 0xFF, 0) # Turn everything off
+  # set a servo to a specific angle
+  def servo_angle(self, servo=0, angle=90):
+    angle = max(min(int(angle), 180), 0)
+    if (servo != 0):
+      servo = 1
+    while not self.i2c.try_lock():
+      pass
+    self.register_set(SERVO_ANGLE[servo], angle)
+    self.i2c.unlock()
+
+  # detach a servo
+  def servo_stop(self, servo=0):
+    if (servo != 0):
+      servo = 1
+    while not self.i2c.try_lock():
+      pass
+    self.register_set(SERVO_ATTACHED[servo], 0)
+    self.i2c.unlock()
 
   # set the specificed motor to coast
   def set_speed(self, motor=0, speed=0):
@@ -140,46 +117,31 @@ class piper_motor_module:
     if (speed < 0):
       direction = 0
       speed = speed * -1
-    if (speed > 100):
-      speed = 100
+    speed = int(min(speed, 100) * 255 / 100) & 0xFF
 
-    speed = int(speed * 255 / 100) & 0xFF
-    print("speed =", speed)
+    __mp0 = 0 + direction
+    __mp1 = 1 - direction
+    if (motor != 0):
+      __mp0 = 2 + direction
+      __mp1 = 3 - direction
 
     while not self.i2c.try_lock():
       pass
-
-    if (motor == 0):
-      if (direction == 0):
-        self.register_set(REG_OUTS, OUTPUT1_MASK, OUTPUT1_OFF) # Turn output 1 on
-        if (speed == 0xFF): 
-          self.register_set(REG_OUTS, OUTPUT0_MASK, OUTPUT0_ON) # Turn output 0 to PWM
-        else:
-          self.register_set(REG_OUTS, OUTPUT0_MASK, OUTPUT0_PWM) # Turn output 0 to PWM
-          self.register_set(REG_PWM0, MASK_PWM, speed) # PWM output 0
-      else:
-        self.register_set(REG_OUTS, OUTPUT0_MASK, OUTPUT0_OFF) # Turn output 0 on
-        if (speed == 0xFF):
-          self.register_set(REG_OUTS, OUTPUT1_MASK, OUTPUT1_ON) # Turn output 0 on
-        else:
-          self.register_set(REG_OUTS, OUTPUT1_MASK, OUTPUT1_PWM) # Turn output 1 to PWM
-          self.register_set(REG_PWM1, MASK_PWM, speed) # PWM output 1
+    self.register_set(REG_OUTS, OUTPUT_OFF, OUTPUT_MASK[__mp1]) # Turn output on
+    if (speed == 0xFF): 
+      self.register_set(REG_OUTS, OUTPUT_ON[__mp0], OUTPUT_MASK[__mp0]) # Turn output to PWM
     else:
-      if (direction == 0):
-        self.register_set(REG_OUTS, OUTPUT3_MASK, OUTPUT3_OFF) # Turn output 3 on
-        if (speed == 0xFF):
-          self.register_set(REG_OUTS, OUTPUT2_MASK, OUTPUT2_ON) # Turn output 2 to PWM
-        else:
-          self.register_set(REG_OUTS, OUTPUT2_MASK, OUTPUT2_PWM) # Turn output 2 to PWM
-          self.register_set(REG_PWM2, MASK_PWM, speed) # PWM output 2
-      else:
-        self.register_set(REG_OUTS, OUTPUT2_MASK, OUTPUT2_OFF) # Turn output 2 on
-        if (speed == 0xFF):
-          self.register_set(REG_OUTS, OUTPUT3_MASK, OUTPUT3_ON) # Turn output 3 to PWM
-        else:
-          self.register_set(REG_OUTS, OUTPUT3_MASK, OUTPUT3_PWM) # Turn output 3 to PWM
-          self.register_set(REG_PWM3, MASK_PWM, speed) # PWM output 3
+      self.register_set(REG_OUTS, OUTPUT_PWM[__mp0], OUTPUT_MASK[__mp0]) # Turn output to PWM
+      self.register_set(REG_PWM[__mp0], speed) # PWM output
+    self.i2c.unlock()
 
+  # stop and release the motors
+  def stop(self):
+    while not self.i2c.try_lock():
+      pass
+    self.register_set(REG_OUTS, 0) # Turn everything off
+    self.register_set(SERVO_ATTACHED[0], 0) # Turn everything off
+    self.register_set(SERVO_ATTACHED[1], 0) # Turn everything off
     self.i2c.unlock()
 
   # Allows for use in context managers.
@@ -189,9 +151,10 @@ class piper_motor_module:
   # Automatically de-initialize after a context manager.
   def __exit__(self, exc_type, exc_val, exc_tb):
     self.stop()
-    self.deinit()
+    self.deinit(False)
 
-  # De-initialize the sig pin.
-  def deinit(self):
-    self.stop()
+  # De-initialize the i2c.
+  def deinit(self, call_stop=True):
+    if call_stop:
+      self.stop()
     self.i2c.deinit()
