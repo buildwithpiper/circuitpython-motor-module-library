@@ -23,13 +23,13 @@
 #
 ################################################################################
 
-__version__ = "0.9.1"
+__version__ = "0.9.0"
 __repo__ = "https://github.com/buildwithpiper/circuitpython_motor_module_library.git"
 
 
 # ----------- Constants and Registers -----------
 # Device i2c address
-DEVICE_ADDR = 0x0F
+MOTOR_MODULE_ADDR = 0x0F
 
 # Register addresses and masks
 REG_MODE1 = 0x00
@@ -50,7 +50,7 @@ SERVO_ANGLE = [0x1E, 0x1F]
 # ----------- Methods -----------
 class piper_motor_module:
   # Initialize the sensor
-  def __init__(self, i2c, address=DEVICE_ADDR):
+  def __init__(self, i2c, address=MOTOR_MODULE_ADDR):
 
     self.i2c = i2c
     self.address = address
