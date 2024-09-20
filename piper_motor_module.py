@@ -1,7 +1,7 @@
 ################################################################################
 # The MIT License (MIT)
 #
-# Copyright (c) 2021 Piper Learning, Inc. and Matthew Matz
+# Copyright (c) 2024 Play Piper LLC, Matthew Matz
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
