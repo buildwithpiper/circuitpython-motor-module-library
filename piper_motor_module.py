@@ -48,7 +48,7 @@ SERVO_ANGLE = [0x1E, 0x1F]
 
 
 # ----------- Methods -----------
-class piper_motor_module:
+class PiperMotorModule:
   # Initialize the sensor
   def __init__(self, i2c, address=MOTOR_MODULE_ADDR):
 
